@@ -23,6 +23,7 @@ from minigpt4.tasks import *
 def parse_args():
     parser = argparse.ArgumentParser(description="Demo")
     parser.add_argument("--cfg-path", required=True, help="path to configuration file.")
+    parser.add_argument("--gpu-id", type=int, default=0, help="specify the gpu to load the model.")
     parser.add_argument(
         "--options",
         nargs="+",
@@ -50,15 +51,17 @@ def setup_seeds(config):
 # ========================================
 
 print('Initializing Chat')
-cfg = Config(parse_args())
+args = parse_args()
+cfg = Config(args)
 
 model_config = cfg.model_cfg
+model_config.device_8bit = args.gpu_id
 model_cls = registry.get_model_class(model_config.arch)
-model = model_cls.from_config(model_config).to('cuda:0')
+model = model_cls.from_config(model_config).to('cuda:{}'.format(args.gpu_id))
 
 vis_processor_cfg = cfg.datasets_cfg.cc_sbu_align.vis_processor.train
 vis_processor = registry.get_processor_class(vis_processor_cfg.name).from_config(vis_processor_cfg)
-chat = Chat(model, vis_processor)
+chat = Chat(model, vis_processor, device='cuda:{}'.format(args.gpu_id))
 print('Initialization Finished')
 
 # ========================================
@@ -89,7 +92,12 @@ def gradio_ask(user_message, chatbot, chat_state):
 
 
 def gradio_answer(chatbot, chat_state, img_list, num_beams, temperature):
-    llm_message = chat.answer(conv=chat_state, img_list=img_list, max_new_tokens=1000, num_beams=num_beams, temperature=temperature)[0]
+    llm_message = chat.answer(conv=chat_state,
+                              img_list=img_list,
+                              num_beams=num_beams,
+                              temperature=temperature,
+                              max_new_tokens=300,
+                              max_length=2000)[0]
     chatbot[-1][1] = llm_message
     return chatbot, chat_state, img_list
 
