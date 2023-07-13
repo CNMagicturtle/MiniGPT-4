@@ -1,5 +1,5 @@
 """
- Copyright (c) 2022, salesforce.com, inc.
+ Copyright (c) 2022, salesforce.com, inc. 
  All rights reserved.
  SPDX-License-Identifier: BSD-3-Clause
  For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause
@@ -8,17 +8,23 @@
 import json
 from typing import Iterable
 
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import Dataset, ConcatDataset 
 from torch.utils.data.dataloader import default_collate
 
 
 class BaseDataset(Dataset):
     def __init__(
-        self, vis_processor=None, text_processor=None, vis_root=None, ann_paths=[]
+        self, 
+        vis_processor=None, 
+        text_processor=None, 
+        vis_root=None, 
+        ann_paths=[], 
+        labels=[]
     ):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
+        labels (list): 存储每个样本的匹配标签,1表示匹配,0表示不匹配
         """
         self.vis_root = vis_root
 
@@ -28,6 +34,9 @@ class BaseDataset(Dataset):
 
         self.vis_processor = vis_processor
         self.text_processor = text_processor
+        
+        # 新增labels属性
+        self.labels = labels
 
         self._add_instance_ids()
 
@@ -44,25 +53,29 @@ class BaseDataset(Dataset):
     def _add_instance_ids(self, key="instance_id"):
         for idx, ann in enumerate(self.annotation):
             ann[key] = str(idx)
+            
+    # 在__getitem__中返回匹配标签        
+    def __getitem__(self, index):
+        vis_data = self.vis_processor(self.annotation[index], self.vis_root)
+        text_data = self.text_processor(self.annotation[index])
+        
+        output = {
+            "vis_data": vis_data,
+            "text_data": text_data,
+            "ann": self.annotation[index],
+            "label": self.labels[index]
+        }
+        
+        return output
 
 
 class ConcatDataset(ConcatDataset):
-    def __init__(self, datasets: Iterable[Dataset]) -> None:
-        super().__init__(datasets)
 
-    def collater(self, samples):
-        # TODO For now only supports datasets with same underlying collater implementations
-
-        all_keys = set()
-        for s in samples:
-            all_keys.update(s)
-
-        shared_keys = all_keys
-        for s in samples:
-            shared_keys = shared_keys & set(s.keys())
-
-        samples_shared_keys = []
-        for s in samples:
-            samples_shared_keys.append({k: s[k] for k in s.keys() if k in shared_keys})
-
-        return self.datasets[0].collater(samples_shared_keys)
+    def __init__(self, datasets):
+        super(ConcatDataset, self).__init__(datasets)
+        self.cummulative_sizes = np.cumsum([0] + [len(d) for d in datasets])
+    
+    def set_processors(self, vis_processor, text_processor):
+        for d in self.datasets:
+            if isinstance(d, BaseDataset):
+                d.set_processors(vis_processor, text_processor)

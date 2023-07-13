@@ -1,5 +1,5 @@
 """
- Copyright (c) 2022, salesforce.com, inc.
+ Copyright (c) 2022, salesforce.com, inc. 
  All rights reserved.
  SPDX-License-Identifier: BSD-3-Clause
  For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause
@@ -12,6 +12,7 @@ import random
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import torch.nn as nn 
 
 import minigpt4.tasks as tasks
 from minigpt4.common.config import Config
@@ -31,6 +32,11 @@ from minigpt4.processors import *
 from minigpt4.runners import *
 from minigpt4.tasks import *
 
+# 定义匹配预测层
+matching_clf = nn.Linear(1024, 1) 
+
+# 定义损失函数
+loss_fn = nn.BCEWithLogitsLoss()
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Training")
@@ -45,8 +51,6 @@ def parse_args():
     )
 
     args = parser.parse_args()
-    # if 'LOCAL_RANK' not in os.environ:
-    #     os.environ['LOCAL_RANK'] = str(args.local_rank)
 
     return args
 
@@ -72,10 +76,8 @@ def get_runner_class(cfg):
 
 
 def main():
-    # allow auto-dl completes on main process without timeout when using NCCL backend.
-    # os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
-    # set before init_distributed_mode() to ensure the same job_id shared across all ranks.
+    # 设置job id
     job_id = now()
 
     cfg = Config(parse_args())
@@ -84,7 +86,6 @@ def main():
 
     setup_seeds(cfg)
 
-    # set after init_distributed_mode() to only log on master.
     setup_logger()
 
     cfg.pretty_print()
@@ -93,9 +94,19 @@ def main():
     datasets = task.build_datasets(cfg)
     model = task.build_model(cfg)
 
+    # 训练循环中
+    loss = loss_fn(matching_clf(model_out), batch['label'])
+    
+    # 评估循环中
+    with torch.no_grad():
+        acc = (matching_clf(model_out) > 0.5) == batch['label']
+        acc = acc.float().mean()
+
     runner = get_runner_class(cfg)(
         cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets
     )
+
+    # 开始训练
     runner.train()
 
 

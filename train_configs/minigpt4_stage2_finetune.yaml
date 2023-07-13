@@ -1,5 +1,5 @@
 model:
-  arch: mini_gpt4
+  arch: mini_gpt4 
   model_type: pretrain_vicuna
   freeze_vit: True
   freeze_qformer: True
@@ -9,6 +9,13 @@ model:
   prompt_template: '###Human: {} ###Assistant: '
   ckpt: '/path/to/stage1/checkpoint/'
 
+# 新增匹配概率预测部分  
+matching_clf: 
+  arch: linear # 线性层
+  in_dim: 1024 # 输入维度 
+  out_dim: 1 # 输出1个值表示匹配概率
+
+loss_fn: BinaryCrossEntropy # 使用二分类交叉熵损失
 
 datasets:
   cc_sbu_align:
@@ -17,8 +24,10 @@ datasets:
         name: "blip2_image_train"
         image_size: 224
     text_processor:
-      train:
+      train:  
         name: "blip_caption"
+        # 设置标签,1表示匹配,0表示不匹配
+        labels: [1, 0, 1, 0, ...] 
 
 run:
   task: image_text_pretrain
@@ -49,3 +58,41 @@ run:
   world_size: 1
   dist_url: "env://"
   distributed: True
+  # 评估时的阈值
+  matching_threshold: 0.5
+  
+  ...
+
+  # 模型输出匹配概率
+  output_key: matching_prob
+
+  # 训练时的参数
+  train_params:
+    loss_key: matching_clf # 损失函数作用的输出键
+
+  # 评估的参数
+  eval_params:
+    accuracy_key: matching_prob # 计算准确率的键名
+
+
+def compute_loss(model_out, batch):
+  # 从模型输出和标签中取出匹配概率预测和目标
+  pred_matching_prob = model_out['matching_prob']  
+  target = batch['labels']
+  
+  # 计算二分类交叉熵损失 
+  loss = loss_fn(pred_matching_prob, target) 
+  
+  return loss
+
+def eval_accuracy(model_out, batch):
+  # 从输出中取匹配概率预测
+  pred_matching_prob = model_out['matching_prob']
+
+  # 根据阈值计算正确预测的数量
+  correct = (pred_matching_prob > matching_threshold) == batch['labels']
+  
+  # 计算准确率
+  acc = sum(correct) / len(correct)
+
+  return acc

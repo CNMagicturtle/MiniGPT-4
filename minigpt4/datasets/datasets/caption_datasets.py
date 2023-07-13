@@ -2,7 +2,7 @@
  Copyright (c) 2022, salesforce.com, inc.
  All rights reserved.
  SPDX-License-Identifier: BSD-3-Clause
- For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+ For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause  
 """
 
 import os
@@ -26,12 +26,13 @@ class __DisplMixin:
 
 
 class CaptionDataset(BaseDataset, __DisplMixin):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, labels):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
+        labels (list): 存储每个样本的匹配标签,1表示匹配,0表示不匹配
         """
-        super().__init__(vis_processor, text_processor, vis_root, ann_paths)
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, labels)
 
         self.img_ids = {}
         n = 0
@@ -52,11 +53,15 @@ class CaptionDataset(BaseDataset, __DisplMixin):
 
         image = self.vis_processor(image)
         caption = self.text_processor(ann["caption"])
+        
+        # 返回匹配标签
+        label = self.labels[index]
 
         return {
-            "image": image,
+            "image": image, 
             "text_input": caption,
             "image_id": self.img_ids[ann["image_id"]],
+            "label": label # 新增匹配标签
         }
 
 
@@ -80,6 +85,6 @@ class CaptionEvalDataset(BaseDataset, __DisplMixin):
 
         return {
             "image": image,
-            "image_id": ann["image_id"],
+            "image_id": ann["image_id"], 
             "instance_id": ann["instance_id"],
         }
